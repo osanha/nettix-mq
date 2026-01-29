@@ -1,6 +1,6 @@
 # nettix-mq
 
-A brokerless, high-performance message queue for Java — built on [Nettix](https://github.com/osanha/nettix).
+A brokerless, high-performance message queue for Java — built on [nettix](https://github.com/osanha/nettix).
 
 ## Overview
 
