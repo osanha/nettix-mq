@@ -1,21 +1,40 @@
 # nettix-mq
 
-A lightweight, WebSocket-based message queue built on [nettix](https://github.com/osanha/nettix).
-
+A brokerless, high-performance message queue for Java — built on [Nettix](https://github.com/osanha/nettix).
 
 ## Overview
 
-nettix-mq provides a simple yet powerful message queue implementation using WebSocket as the transport layer and Kryo for high-performance serialization. It supports both synchronous (request-response) and asynchronous messaging patterns with unicast and broadcast capabilities.
+**nettix-mq** is a lightweight pub/sub messaging library that enables direct publisher-to-subscriber communication without intermediary broker servers.
+Designed for distributed systems that need to synchronize state (sessions, transactions, etc.) across nodes without a central coordination point.                                                                                  
+
+Ideal when traditional brokers add unnecessary overhead — just fast, reliable messaging between Java services.
+
+### Why Brokerless?                                                                                                                                                                              
+                                                                                                                                                                                                 
+```                                                                                                                                                                                              
+[Traditional MQ]                    [nettix-mq (Brokerless)]
+
+Publisher → Broker → Subscribers    Publisher ←→ Subscribers
+              ↑                            ↖   ↗
+         Single point of             Direct WebSocket
+         failure & latency           connections
+```                                                                                                                                                                                              
+                                                                                                                                                                                                 
+- **Zero infrastructure** — no broker to deploy, configure, or maintain                                                                                                                          
+- **Lower latency** — messages go directly from publisher to subscriber                                                                                                                          
+- **Simpler topology** — fewer moving parts, easier to reason about                                                                                                                              
+- **Web-friendly** — WebSocket transport works through firewalls and proxies    
 
 ## Features
 
-- **WebSocket Transport**: Reliable, bidirectional communication over WebSocket
+- **Brokerless Architecture**: Direct peer-to-peer messaging, no intermediary servers                                                                                                            
+- **WebSocket Transport**: Reliable, bidirectional communication that works everywhere
 - **Kryo Serialization**: Fast, compact binary serialization with object pooling
 - **Messaging Patterns**: One-way (fire-and-forget) and two-way (request-response)
 - **Unicast & Broadcast**: Send message to a specific subscriber or all connected subscribers
-- **Type-safe Messages**: Enum-based message types for compile-time safety
-- **Connection Management**: Built-in heartbeat and timeout handling
-
+- **Type-safe API**: Enum-based message types for compile-time safety
+- **Resilient Connections**: Built-in heartbeat, reconnection and timeout handling
+ 
 ## Requirements
 
 - Java 6+
