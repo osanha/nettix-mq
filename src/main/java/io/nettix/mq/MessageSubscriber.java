@@ -41,13 +41,13 @@ import com.esotericsoftware.kryo.Kryo;
  * @param <E>
  *          message type
  */
-public class MessageQueueClient<E extends Enum<E>>
+public class MessageSubscriber<E extends Enum<E>>
     extends PersistentClientChannelManager
 {
   /**
    * Logger.
    */
-  private static final Logger _logger = LoggerFactory.getLogger(MessageQueueClient.class);
+  private static final Logger _logger = LoggerFactory.getLogger(MessageSubscriber.class);
 
   /**
    * URI used for WebSocket connection.
@@ -141,7 +141,7 @@ public class MessageQueueClient<E extends Enum<E>>
    *          Kryo object factory
    * @throws URISyntaxException
    */
-  public MessageQueueClient(String name, String uri, PoolableKryoFactory factory)
+  public MessageSubscriber(String name, String uri, PoolableKryoFactory factory)
       throws URISyntaxException
   {
     this(name, uri, factory, 60, 10);
@@ -162,8 +162,8 @@ public class MessageQueueClient<E extends Enum<E>>
    *          connection check timeout (seconds)
    * @throws URISyntaxException
    */
-  public MessageQueueClient(String name, String uri,
-                            PoolableKryoFactory factory, int delay, int timeout)
+  public MessageSubscriber(String name, String uri,
+                           PoolableKryoFactory factory, int delay, int timeout)
       throws URISyntaxException
   {
     super(name);

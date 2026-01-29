@@ -2,6 +2,7 @@
 
 A lightweight, WebSocket-based message queue built on [nettix](https://github.com/osanha/nettix).
 
+
 ## Overview
 
 nettix-mq provides a simple yet powerful message queue implementation using WebSocket as the transport layer and Kryo for high-performance serialization. It supports both synchronous (request-response) and asynchronous messaging patterns with unicast and broadcast capabilities.
@@ -10,28 +11,68 @@ nettix-mq provides a simple yet powerful message queue implementation using WebS
 
 - **WebSocket Transport**: Reliable, bidirectional communication over WebSocket
 - **Kryo Serialization**: Fast, compact binary serialization with object pooling
-- **Sync/Async Messaging**: Support for both fire-and-forget and request-response patterns
-- **Unicast & Broadcast**: Send messages to a single client or all connected clients
+- **Messaging Patterns**: One-way (fire-and-forget) and two-way (request-response)
+- **Unicast & Broadcast**: Send message to a specific subscriber or all connected subscribers
 - **Type-safe Messages**: Enum-based message types for compile-time safety
 - **Connection Management**: Built-in heartbeat and timeout handling
 
 ## Requirements
 
 - Java 6+
-- nettix 3.10+
+- nettix 3.1.1+
 - [Kryo](https://github.com/EsotericSoftware/kryo) - Fast binary serialization
 - [eraasoft objectpool](https://mvnrepository.com/artifact/nf.fr.eraasoft/objectpool) - Kryo instance pooling
 
 ## Installation
 
+Available on
+[![](https://jitpack.io/v/osanha/nettix-mq.svg)](https://jitpack.io/#osanha/nettix-mq)
+
+> **Note:**
+>  When distributed via JitPack, the groupId is resolved as com.github.osanha based on the GitHub repository owner.
+>
+> Future releases will be available on Maven Central with coordinates `io.nettix:nettix-mq`.
+
 ### Maven
+
+Add the dependency:
 
 ```xml
 <dependency>
-    <groupId>io.nettix</groupId>
+    <groupId>com.github.osanha</groupId>
     <artifactId>nettix-mq</artifactId>
-    <version>3.10</version>
+    <version>1.0.0</version>
 </dependency>
+```
+
+
+Add the JitPack repository to your `pom.xml`:
+
+```xml
+<repositories>
+    <!--Prioritize Central repository for faster dependency resolution-->
+    <repository>
+        <id>central</id>
+        <url>https://repo.maven.apache.org/maven2</url>
+    </repository>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+```
+
+### Gradle
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven { url = uri("https://jitpack.io") }
+}
+
+dependencies {
+    implementation("com.github.osanha:nettix-mq:1.0.0")
+}
 ```
 
 ## Quick Start
@@ -50,9 +91,12 @@ public enum EventType {
 ### Create Kryo Factory
 
 ```java
+/**
+ * Java primitive types are registered by default.
+ */
 public class MyKryoFactory extends PoolableKryoFactory {
     @Override
-    protected void configure(Kryo kryo) {
+    protected void initialize(Kryo kryo) {
         kryo.register(UserLoginEvent.class);
         kryo.register(DataUpdateEvent.class);
         kryo.register(NotificationEvent.class);
@@ -60,61 +104,79 @@ public class MyKryoFactory extends PoolableKryoFactory {
 }
 ```
 
-### Server
+### Publisher
 
 ```java
-MessageQueueServer<EventType> server = new MessageQueueServer<>(
-    "NotificationServer",
+MessagePublisher<EventType> publisher = new MessagePublisher<EventType>(
+    "EventPublisher",
     "/mq",
     new MyKryoFactory(),
     9000
 );
 
-server.setUp();
+publisher.start();
 
-// Broadcast to all clients (async)
-server.asyncWrite(EventType.NOTIFICATION, new NotificationEvent("System update"));
+// Broadcast to all subscribers (fire-and-forget)
+publisher.publish(EventType.NOTIFICATION, new NotificationEvent("System update"));
 
-// Broadcast to all clients (sync - wait for ACK)
-ChannelGroupFuture future = server.syncWrite(EventType.DATA_UPDATE, data);
-future.await();
+// Broadcast to all subscribers (request-response)
+publisher.request(EventType.DATA_UPDATE, data).addListener(new ChannelGroupFutureListener() {
+    @Override
+    public void operationComplete(ChannelGroupFuture futures) throws Exception {
+        for (ChannelFuture f : futures) {
+            if (f.isSuccess()) {
+                Response r = (Response) ((CallableChannelFuture<Object>) f).get();
+                ...
+            }
+        }
+    }
+});
 
-// Send to specific client (async)
-server.asyncWrite(channel, EventType.USER_LOGIN, loginEvent);
+// Unicast to specific subscriber (fire-and-forget)
+publisher.publish(channel, EventType.USER_LOGIN, loginEvent);
 
-// Send to specific client (sync)
-CallableChannelFuture<Object> future = server.syncWrite(channel, EventType.DATA_UPDATE, data);
-Object response = future.get();
+// Unicast to specific subscriber (request-response)
+CallableChannelFuture<Object> future = publisher.request(channel, EventType.DATA_UPDATE, data);
+future.addListener(new CallableChannelFutureListener<Object>() {
+    @Override
+    public void operationComplete(CallableChannelFuture<Object> f) throws Exception {
+        if (f.isSuccess()) {
+            Response r = (Response) f.get();
+            ...
+        }
+    }
+});
 ```
 
-### Client
+### Subscriber
 
 ```java
-MessageQueueClient<EventType> client = new MessageQueueClient<>(
-    "NotificationClient",
-    "ws://localhost:9000/mq",
+MessageSubscriber<EventType> subscriber = new MessageSubscriber<EventType>(
+    "EventSubscriber",
+    "/mq",
     new MyKryoFactory()
 );
 
 // Register message listeners
-client.addListener(EventType.NOTIFICATION, new MessageListener<NotificationEvent, Void>() {
+subscriber.addListener(EventType.NOTIFICATION, new MessageListener<NotificationEvent, Void>() {
     @Override
     public Void messageReceived(Channel ch, NotificationEvent event) {
         System.out.println("Received: " + event.getMessage());
-        return null;  // No response for async messages
+        return null;  // No response for fire-and-forget messages
     }
 });
 
-client.addListener(EventType.DATA_UPDATE, new MessageListener<DataUpdateEvent, Boolean>() {
+subscriber.addListener(EventType.DATA_UPDATE, new MessageListener<DataUpdateEvent, Boolean>() {
     @Override
     public Boolean messageReceived(Channel ch, DataUpdateEvent event) {
         processUpdate(event);
-        return true;  // Response for sync messages
+        return true;  // Response for request-response messages
     }
 });
 
-client.setUp();
-client.connect("localhost", 9000);
+subscriber.start();
+subscriber.connect("localhost", 9000);
+subscriber.connect("localhost", 9001);
 ```
 
 ## Messaging Patterns
@@ -123,24 +185,24 @@ client.connect("localhost", 9000);
 
 nettix-mq supports two delivery patterns:
 
-| Pattern | Method | Description |
-|---------|--------|-------------|
-| **Broadcast** | `asyncWrite(type, value)` | Send to all connected clients |
-| **Unicast** | `asyncWrite(channel, type, value)` | Send to a specific client |
+| Pattern | Method                          | Description                       |
+|---------|---------------------------------|-----------------------------------|
+| **Broadcast** | `publish(type, value)`          | Send to all connected subscribers |
+| **Unicast** | `publish(channel, type, value)` | Send to a specific subscriber    |
 
 #### Broadcast Example
 
 ```java
-// Notify all connected clients about a system event
-server.asyncWrite(EventType.SYSTEM_ALERT, new Alert("Server maintenance in 10 minutes"));
+// Notify all connected subscribers about a system event
+publisher.publish(EventType.SYSTEM_ALERT, new Alert("Server maintenance in 10 minutes"));
 
-// Broadcast with acknowledgement from all clients
-ChannelGroupFuture future = server.syncWrite(EventType.CONFIG_UPDATE, newConfig);
+// Broadcast with acknowledgement from all subscribers
+ChannelGroupFuture future = publisher.request(EventType.CONFIG_UPDATE, newConfig);
 future.addListener(new ChannelGroupFutureListener() {
     @Override
     public void operationComplete(ChannelGroupFuture f) {
         if (f.isCompleteSuccess()) {
-            System.out.println("All clients acknowledged");
+            System.out.println("All subscribers acknowledged");
         } else {
             // Handle partial failures
             for (ChannelFuture cf : f) {
@@ -156,8 +218,8 @@ future.addListener(new ChannelGroupFutureListener() {
 ```
 Server                    Client A      Client B      Client C
    │                          │             │             │
-   │─── asyncWrite(msg) ─────>│             │             │
-   │──────────────────────────────────────>│             │
+   │────── publish(msg) ─────>│             │             │
+   │───────────────────────────────────────>│             │
    │─────────────────────────────────────────────────────>│
    │                          │             │             │
 ```
@@ -165,51 +227,60 @@ Server                    Client A      Client B      Client C
 #### Unicast Example
 
 ```java
-// Send a private message to a specific client
+// Send a private message to a specific subscriber
 Channel targetClient = getClientByUserId("user123");
-server.asyncWrite(targetClient, EventType.PRIVATE_MSG, message);
+publisher.publish(targetClient, EventType.PRIVATE_MSG, message);
 
-// Request-response with a specific client
-CallableChannelFuture<UserInfo> future = server.syncWrite(
+// request-response with a specific subscriber
+CallableChannelFuture<UserInfo> future = publisher.request(
     targetClient,
     EventType.GET_USER_INFO,
     new UserInfoRequest("user123")
 );
-UserInfo info = (UserInfo) future.get();
+
+future.addListener(new CallableChannelFutureListener<Object>() {
+    @Override
+    public void operationComplete(CallableChannelFuture<Object> f) throws Exception {
+        if (f.isSuccess()) {
+            UserInfo info = (UserInfo) f.get();
+        }
+    }
+});
+
 ```
 
 ```
-Server                    Client A      Client B      Client C
+Publisher               Subscriber A   Subscriber B   Subscriber C
    │                          │             │             │
-   │─ asyncWrite(chB, msg) ───────────────>│             │
-   │                          │             │ (only B)   │
+   │──── publish(chB, msg) ────────────────>│             │
+   │                          │             │  (only B)   │
    │                          │             │             │
 ```
 
-### Sync vs Async
+### one-way vs two-way
 
-| Mode | Method | Return Type | Use Case |
-|------|--------|-------------|----------|
-| **Async** | `asyncWrite()` | `ChannelFuture` | Fire-and-forget, notifications |
-| **Sync** | `syncWrite()` | `CallableChannelFuture<T>` | Request-response, confirmations |
+| Mode        | Method      | Return Type | Use Case |
+|-------------|-------------|-------------|----------|
+| **one-way** | `publish()` | `ChannelFuture` | Fire-and-forget, notifications |
+| **two-way** | `request()` | `CallableChannelFuture<T>` | Request-response, confirmations |
 
-#### Async Flow (Fire-and-Forget)
+#### One-way Flow (Fire-and-Forget)
 
 ```
-Server                          Client
+Publisher                      Subscriber
    │                               │
-   │──── asyncWrite(type, msg) ───>│
+   │───── publish(type, msg) ─────>│
    │                               │ messageReceived()
    │     (no response expected)    │ returns null
    │                               │
 ```
 
-#### Sync Flow (Request-Response)
+#### Two-way Flow (Request-Response)
 
 ```
-Server                          Client
+Publisher                      Subscriber
    │                               │
-   │──── syncWrite(type, msg) ────>│
+   │───── request(type, msg) ─────>│
    │                               │ messageReceived()
    │<──────── response ────────────│ returns value
    │                               │
@@ -218,19 +289,19 @@ Server                          Client
 
 ## Configuration
 
-### Server Options
+### Publisher Options
 
 ```java
-MessageQueueServer<EventType> server = new MessageQueueServer<>(
+MessagePublisher<EventType> publisher = new MessagePublisher<EventType>(
     "MyMQ",
-    "/mq",
+    "/mq", 
     kryoFactory,
-    9000,
+    9000, 
     60,   // enquire link interval (seconds)
     10    // response timeout (seconds)
 );
 
-server.setConnectionHandler(new ConnectStateEventHandler() {
+publisher.setConnectionHandler(new ConnectStateEventHandler() {
     @Override
     public void channelConnected(Channel ch) {
         System.out.println("Client connected: " + ch.getRemoteAddress());
@@ -243,12 +314,12 @@ server.setConnectionHandler(new ConnectStateEventHandler() {
 });
 ```
 
-### Client Options
+### Subscriber Options
 
 ```java
-MessageQueueClient<EventType> client = new MessageQueueClient<>(
+MessageSubscriber<EventType> client = new MessageSubscriber<EventType>(
     "MyClient",
-    uri,
+    "/mq",
     kryoFactory,
     60,   // enquire link interval (seconds)
     10    // response timeout (seconds)
@@ -261,13 +332,13 @@ client.setConnectionHandler(handler);
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    MessageQueueServer                     │
+│                    MessagePublisher                      │
 │  ┌─────────────────────────────────────────────────────┐ │
-│  │ asyncWrite() / syncWrite() - Unicast & Broadcast    │ │
+│  │     publish() / request() - Unicast & Broadcast     │ │
 │  └─────────────────────────────────────────────────────┘ │
-│                          │                                │
+│                          │                               │
 │  ┌───────────────────────▼───────────────────────────┐   │
-│  │              WebSocket Transport                   │   │
+│  │              WebSocket Transport                  │   │
 │  │         (KryoWebSocketEncoder/Decoder)            │   │
 │  └───────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────┘
@@ -275,12 +346,12 @@ client.setConnectionHandler(handler);
                     WebSocket Connection
                            │
 ┌──────────────────────────────────────────────────────────┐
-│                    MessageQueueClient                     │
+│                    MessageSubscriber                     │
 │  ┌───────────────────────────────────────────────────┐   │
-│  │              WebSocket Transport                   │   │
+│  │              WebSocket Transport                  │   │
 │  │         (KryoWebSocketEncoder/Decoder)            │   │
 │  └───────────────────────────────────────────────────┘   │
-│                          │                                │
+│                          │                               │
 │  ┌───────────────────────▼───────────────────────────┐   │
 │  │      Dispatcher → MessageListener (per type)      │   │
 │  └───────────────────────────────────────────────────┘   │
@@ -293,7 +364,7 @@ client.setConnectionHandler(handler);
 - Event-driven microservices communication
 - Live data streaming (stock prices, sensor data)
 - Chat and messaging applications
-- Distributed system coordination
+- Distributed system coordination & synchronization
 
 ## Related Projects
 
@@ -305,4 +376,4 @@ MIT License
 
 ## Author
 
-sanha
+Sanha

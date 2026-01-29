@@ -10,24 +10,15 @@
     <packaging>jar</packaging>
 
     <name>NettixMQ</name>
-    <description>Nettix based high-performance, light-weight message queue</description>
+    <description>Nettix 3.x based high-performance, light-weight message queue</description>
     <url>https://github.com/osanha/nettix-mq</url>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <kryo.version>5.6.2</kryo.version>
+        <!-- To build for Java 6, you must use JDK 8 or earlier. -->
+        <maven.compiler.source>1.6</maven.compiler.source>
+        <maven.compiler.target>1.6</maven.compiler.target>
     </properties>
-
-    <repositories>
-        <repository>
-            <id>central</id>
-            <url>https://repo.maven.apache.org/maven2</url>
-        </repository>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io</url>
-        </repository>
-    </repositories>
 
     <dependencies>
         <dependency>
@@ -43,38 +34,63 @@
         <dependency>
             <groupId>com.esotericsoftware</groupId>
             <artifactId>kryo</artifactId>
-            <version>${kryo.version}</version>
+            <version>3.0.3</version>
         </dependency>
     </dependencies>
 
-    <profiles>
-        <profile>
-            <id>modern</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <properties>
-                <maven.compiler.release>11</maven.compiler.release>
-                <kryo.version>5.6.2</kryo.version>
-            </properties>
-        </profile>
-        <profile>
-            <id>legacy</id>
-            <properties>
-                <!-- To build for Java 6, you must use JDK 8 or earlier. -->
-                <maven.compiler.source>1.6</maven.compiler.source>
-                <maven.compiler.target>1.6</maven.compiler.target>
-                <kryo.version>3.0.3</kryo.version>
-            </properties>
-        </profile>
-    </profiles>
+    <repositories>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
+                <version>3.1</version>
+                <configuration>
+                    <source>1.6</source>
+                    <target>1.6</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.3</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <doclint>none</doclint>
+                            <source>1.6</source>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

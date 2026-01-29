@@ -47,23 +47,23 @@ import io.nettix.websocket.WebSocketServerHandler;
 import com.esotericsoftware.kryo.Kryo;
 
 /**
- * Message queue server. Sends messages to connected clients synchronously or asynchronously.
+ * Message publisher. Sends messages to connected subscribers using fire-and-forget or request-response patterns.
  *
  * @author sanha
  *
  * @param <E>
  *          message type
  */
-public class MessageQueueServer<E extends Enum<E>>
+public class MessagePublisher<E extends Enum<E>>
     extends ServerChannelManager
 {
   /**
    * Logger.
    */
-  private static final Logger _logger = LoggerFactory.getLogger(MessageQueueServer.class);
+  private static final Logger _logger = LoggerFactory.getLogger(MessagePublisher.class);
 
   /**
-   * Empty channel group future used when no clients are connected.
+   * Empty channel group future used when no subscribers are connected.
    */
   private static final ChannelGroupFuture _emptyGrpFuture = new DefaultChannelGroupFuture(
                                                                                           new DefaultChannelGroup(),
@@ -100,7 +100,7 @@ public class MessageQueueServer<E extends Enum<E>>
   private final URI _uri;
 
   /**
-   * Handler for processing responses in synchronous message transmission.
+   * Handler for processing responses in request-response messaging.
    */
   private final Synchronizer _synchronizer = new Synchronizer();
 
@@ -110,21 +110,21 @@ public class MessageQueueServer<E extends Enum<E>>
   private ChannelHandler _connectionHandler;
 
   /**
-   * Sequence generator for synchronous messages to a single server.
+   * Sequence generator for request-response messages to single subscriber.
    */
   private final RoundRobinInteger _singleSequencer = new RoundRobinInteger(
                                                                            1,
                                                                            RoundRobinInteger.MAX_POSITIVE_VALUE);
 
   /**
-   * Sequence generator for synchronous messages to multiple servers.
+   * Sequence generator for request-response messages to multiple subscribers.
    */
   private final RoundRobinInteger _multiSequencer = new RoundRobinInteger(
                                                                           RoundRobinInteger.MAX_NEGATIVE_VALUE,
                                                                           -1);
 
   /**
-   * Map for handling synchronous message transmission.
+   * Map for handling request-response messaging.
    */
   private final TimeoutableMap<Integer, Object> _futureMap;
 
@@ -134,7 +134,7 @@ public class MessageQueueServer<E extends Enum<E>>
   private E[] _types;
 
   /**
-   * Channel handler that processes responses for synchronous messaging.
+   * Channel handler that processes responses for request-response messaging.
    */
   @Sharable
   private class Synchronizer
@@ -153,7 +153,7 @@ public class MessageQueueServer<E extends Enum<E>>
       else
         future = _futureMap.get(msg.seq);
 
-      _logger.debug("Received message ACK [{}] <{}> {}", msg.seq,
+      _logger.debug("Received response [{}] <{}> {}", msg.seq,
                     _types[msg.type], msg.value);
 
       if (future != null)
@@ -183,7 +183,7 @@ public class MessageQueueServer<E extends Enum<E>>
    * Constructor.
    *
    * @param name
-   *          message queue name, used for logging
+   *          message publisher name, used for logging
    * @param uri
    *          URI for WebSocket connection
    * @param factory
@@ -192,8 +192,8 @@ public class MessageQueueServer<E extends Enum<E>>
    *          listening port
    * @throws URISyntaxException
    */
-  public MessageQueueServer(String name, String uri,
-                            PoolableKryoFactory factory, int port)
+  public MessagePublisher(String name, String uri,
+                          PoolableKryoFactory factory, int port)
       throws URISyntaxException
   {
     this(name, uri, factory, port, 60, 10);
@@ -203,7 +203,7 @@ public class MessageQueueServer<E extends Enum<E>>
    * Constructor.
    *
    * @param name
-   *          message queue name, used for logging
+   *          message publisher name, used for logging
    * @param uri
    *          URI for WebSocket connection
    * @param factory
@@ -213,12 +213,12 @@ public class MessageQueueServer<E extends Enum<E>>
    * @param delay
    *          enquire link message interval (seconds)
    * @param timeout
-   *          response wait timeout for synchronous transmission (seconds)
+   *          response timeout for request-response messaging (seconds)
    * @throws URISyntaxException
    */
-  public MessageQueueServer(String name, String uri,
-                            PoolableKryoFactory factory, int port, int delay,
-                            int timeout) throws URISyntaxException
+  public MessagePublisher(String name, String uri,
+                          PoolableKryoFactory factory, int port, int delay,
+                          int timeout) throws URISyntaxException
   {
     super(name, port);
     useChannelGroup(true);
@@ -255,7 +255,7 @@ public class MessageQueueServer<E extends Enum<E>>
   }
 
   /**
-   * Broadcasts a message asynchronously.
+   * Broadcasts a message to all subscribers (fire-and-forget, no response).
    *
    * @param type
    *          message type
@@ -264,7 +264,7 @@ public class MessageQueueServer<E extends Enum<E>>
    * @return the result future
    */
   @SuppressWarnings("unchecked")
-  public ChannelGroupFuture asyncWrite(E type, Object value)
+  public ChannelGroupFuture publish(E type, Object value)
   {
     if (_types == null)
       _types = (E[]) type.getClass().getEnumConstants();
@@ -274,12 +274,12 @@ public class MessageQueueServer<E extends Enum<E>>
     if (group.size() == 0)
       return _emptyGrpFuture;
 
-    _logger.debug("broadcast async message <{}> {}", type, value);
+    _logger.debug("Broadcast message <{}> {}", type, value);
     return group.write(new Message(type.ordinal(), value));
   }
 
   /**
-   * Unicasts a message asynchronously.
+   * Sends a message to a specific subscriber (fire-and-forget, no response).
    *
    * @param ch
    *          target channel
@@ -290,17 +290,17 @@ public class MessageQueueServer<E extends Enum<E>>
    * @return the result future
    */
   @SuppressWarnings("unchecked")
-  public ChannelFuture asyncWrite(Channel ch, E type, Object value)
+  public ChannelFuture publish(Channel ch, E type, Object value)
   {
     if (_types == null)
       _types = (E[]) type.getClass().getEnumConstants();
 
-    _logger.debug("unicast async message <{}> {}", type, value);
+    _logger.debug("Unicast message <{}> {}", type, value);
     return ch.write(new Message(type.ordinal(), value));
   }
 
   /**
-   * Unicasts a message synchronously.
+   * Sends a message to a specific subscriber (request-response).
    *
    * @param ch
    *          target channel
@@ -311,14 +311,14 @@ public class MessageQueueServer<E extends Enum<E>>
    * @return the result future
    */
   @SuppressWarnings("unchecked")
-  public CallableChannelFuture<Object> syncWrite(Channel ch, E type,
-                                                 Object value)
+  public CallableChannelFuture<Object> request(Channel ch, E type,
+                                               Object value)
   {
     if (_types == null)
       _types = (E[]) type.getClass().getEnumConstants();
 
     final int seq = _singleSequencer.next();
-    _logger.debug("unicast sync message [{}] <{}> {}", seq, type, value);
+    _logger.debug("Unicast request [{}] <{}> {}", seq, type, value);
 
     final CallableChannelFuture<Object> finalFuture = new CallableChannelFuture<Object>(
                                                                                         ch);
@@ -353,7 +353,7 @@ public class MessageQueueServer<E extends Enum<E>>
   }
 
   /**
-   * Broadcasts a message synchronously.
+   * Broadcasts a message to all subscribers (request-response).
    *
    * @param type
    *          message type
@@ -362,7 +362,7 @@ public class MessageQueueServer<E extends Enum<E>>
    * @return the result future reflecting response reception
    */
   @SuppressWarnings("unchecked")
-  public ChannelGroupFuture syncWrite(E type, Object value)
+  public ChannelGroupFuture request(E type, Object value)
   {
     if (_types == null)
       _types = (E[]) type.getClass().getEnumConstants();
@@ -378,7 +378,7 @@ public class MessageQueueServer<E extends Enum<E>>
       tmpSeq = _multiSequencer.next();
 
     final int seq = tmpSeq;
-    _logger.debug("broadcast sync message [{}] <{}> {}", seq, type, value);
+    _logger.debug("Broadcast request [{}] <{}> {}", seq, type, value);
 
     List<ChannelFuture> futures = new ArrayList<ChannelFuture>(group.size());
 
@@ -397,7 +397,7 @@ public class MessageQueueServer<E extends Enum<E>>
       {
         if (!ioGf.isCompleteSuccess())
           {
-            _logger.error("Some message sending was failed");
+            _logger.error("Some message sending failed");
 
             for (ChannelFuture future : ioGf)
               {
