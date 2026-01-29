@@ -24,7 +24,7 @@
         <dependency>
             <groupId>com.github.osanha</groupId>
             <artifactId>nettix</artifactId>
-            <version>3.1.0</version>
+            <version>3.1.1</version>
         </dependency>
         <dependency>
             <groupId>nf.fr.eraasoft</groupId>
