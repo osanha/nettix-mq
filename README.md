@@ -60,10 +60,9 @@ Add the dependency:
 <dependency>
     <groupId>com.github.osanha</groupId>
     <artifactId>nettix-mq</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
-
 
 Add the JitPack repository to your `pom.xml`:
 
@@ -90,7 +89,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.osanha:nettix-mq:1.0.0")
+    implementation("com.github.osanha:nettix-mq:1.0.1")
 }
 ```
 
